@@ -16,7 +16,7 @@ pipeline {
                     echo "Cloning repository..."
                     checkout([
                         $class: 'GitSCM',
-                        branches: [[name: 'refs/heads/main']],  // Force use of main branch
+                        branches: [[name: 'refs/heads/main']],  
                         userRemoteConfigs: [[url: 'https://github.com/Rautcode/aws-devops-task.git']]
                     ])
                 }
@@ -37,10 +37,10 @@ pipeline {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
                         echo "Logging into AWS ECR..."
-                        powershell '''
-                        $PASSWORD = aws ecr get-login-password --region ap-south-1
-                        $PASSWORD | docker login --username AWS --password-stdin 982534379850.dkr.ecr.ap-south-1.amazonaws.com
-                        '''
+                        powershell """
+                        \$PASSWORD = aws ecr get-login-password --region ${AWS_REGION}
+                        \$PASSWORD | docker login --username AWS --password-stdin ${ECR_URI}
+                        """
                     }
                 }
             }
@@ -50,7 +50,14 @@ pipeline {
             steps {
                 script {
                     echo "Checking if ECR repository exists..."
-                    def ecrExists = powershell(returnStatus: true, script: "aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}")
+                    def ecrExists = powershell(returnStatus: true, script: """
+                        try {
+                            aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}
+                            exit 0
+                        } catch {
+                            exit 1
+                        }
+                    """)
 
                     if (ecrExists != 0) {
                         echo "ECR repository does not exist. Creating..."
@@ -78,7 +85,7 @@ pipeline {
             steps {
                 script {
                     echo "Updating AWS Lambda function..."
-                    powershell "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest"
+                    powershell "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest --region ${AWS_REGION}"
                 }
             }
         }
