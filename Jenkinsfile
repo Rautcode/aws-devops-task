@@ -33,31 +33,18 @@ pipeline {
         }
 
         stage('Login to AWS ECR') {
-    steps {
-        script {
-            echo "Logging into AWS ECR..."
-            withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                env.AWS_REGION = 'ap-south-1'  // Ensure this is set
-                env.AWS_ACCOUNT_ID = '982534379850'  // Ensure this is set
-                
-                powershell '''
-                aws configure set aws_access_key_id $env:AWS_ACCESS_KEY_ID
-                aws configure set aws_secret_access_key $env:AWS_SECRET_ACCESS_KEY
-                aws configure set region $env:AWS_REGION
-
-                $ecrLogin = aws ecr get-login-password --region $env:AWS_REGION
-                if ($ecrLogin) {
-                    echo "AWS ECR Login Successful"
-                    $ecrLogin | docker login --username AWS --password-stdin "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
-                } else {
-                    echo "Failed to retrieve ECR login password"
-                    exit 1
+            steps {
+                script {
+                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
+                        def awsRegion = 'ap-south-1'
+                        def ecrUrl = "982534379850.dkr.ecr.${awsRegion}.amazonaws.com"
+                        sh '''
+                        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 982534379850.dkr.ecr.ap-south-1.amazonaws.com
+                        '''
+                    }
                 }
-                '''
             }
         }
-    }
-}
 
         stage('Ensure ECR Repository Exists') {
             steps {
