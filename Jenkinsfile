@@ -14,7 +14,11 @@ pipeline {
             steps {
                 script {
                     echo "Cloning repository..."
-                    checkout([$class: 'GitSCM', branches: [[name: 'main']], userRemoteConfigs: [[url: 'https://github.com/Rautcode/aws-devops-task.git']]])
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: 'refs/heads/main']],  // Force use of main branch
+                        userRemoteConfigs: [[url: 'https://github.com/Rautcode/aws-devops-task.git']]
+                    ])
                 }
             }
         }
@@ -23,36 +27,47 @@ pipeline {
             steps {
                 script {
                     echo "Building Docker image..."
-                    sh "docker build -t ${ECR_REPO}:latest ."
+                    powershell "docker build -t ${ECR_REPO}:latest ."
                 }
             }
         }
 
         stage('Login to AWS ECR') {
-            steps {
-                script {
-                    echo "Logging into AWS ECR..."
-                    withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                        sh '''
-                        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
-                        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
-                        aws configure set region $AWS_REGION
-                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
-                        '''
-                    }
+    steps {
+        script {
+            echo "Logging into AWS ECR..."
+            withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                env.AWS_REGION = 'ap-south-1'  // Ensure this is set
+                env.AWS_ACCOUNT_ID = '982534379850'  // Ensure this is set
+                
+                powershell '''
+                aws configure set aws_access_key_id $env:AWS_ACCESS_KEY_ID
+                aws configure set aws_secret_access_key $env:AWS_SECRET_ACCESS_KEY
+                aws configure set region $env:AWS_REGION
+
+                $ecrLogin = aws ecr get-login-password --region $env:AWS_REGION
+                if ($ecrLogin) {
+                    echo "AWS ECR Login Successful"
+                    $ecrLogin | docker login --username AWS --password-stdin "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
+                } else {
+                    echo "Failed to retrieve ECR login password"
+                    exit 1
                 }
+                '''
             }
         }
+    }
+}
 
         stage('Ensure ECR Repository Exists') {
             steps {
                 script {
                     echo "Checking if ECR repository exists..."
-                    def ecrExists = sh(script: "aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}", returnStatus: true)
+                    def ecrExists = powershell(returnStatus: true, script: "aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}")
 
                     if (ecrExists != 0) {
                         echo "ECR repository does not exist. Creating..."
-                        sh "aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}"
+                        powershell "aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}"
                     } else {
                         echo "ECR repository already exists."
                     }
@@ -64,10 +79,10 @@ pipeline {
             steps {
                 script {
                     echo "Tagging Docker image..."
-                    sh "docker tag ${ECR_REPO}:latest ${ECR_URI}:latest"
+                    powershell "docker tag ${ECR_REPO}:latest ${ECR_URI}:latest"
 
                     echo "Pushing Docker image to ECR..."
-                    sh "docker push ${ECR_URI}:latest"
+                    powershell "docker push ${ECR_URI}:latest"
                 }
             }
         }
@@ -76,7 +91,7 @@ pipeline {
             steps {
                 script {
                     echo "Updating AWS Lambda function..."
-                    sh "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest"
+                    powershell "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest"
                 }
             }
         }
