@@ -14,11 +14,7 @@ pipeline {
             steps {
                 script {
                     echo "Cloning repository..."
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: 'refs/heads/main']],  // Force use of main branch
-                        userRemoteConfigs: [[url: 'https://github.com/Rautcode/aws-devops-task.git']]
-                    ])
+                    checkout([$class: 'GitSCM', branches: [[name: 'main']], userRemoteConfigs: [[url: 'https://github.com/Rautcode/aws-devops-task.git']]])
                 }
             }
         }
@@ -37,20 +33,12 @@ pipeline {
                 script {
                     echo "Logging into AWS ECR..."
                     withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                        env.AWS_REGION = 'ap-south-1'  
-                        env.AWS_ACCOUNT_ID = '982534379850' 
                         powershell '''
-                        aws configure set aws_access_key_id $env:AWS_ACCESS_KEY_ID
-                        aws configure set aws_secret_access_key $env:AWS_SECRET_ACCESS_KEY
-                        aws configure set region $env:AWS_REGION
-                        $ecrLogin = aws ecr get-login-password --region $env:AWS_REGION
-                        if ($ecrLogin) {
-                        echo "AWS ECR Login Successful"
-                        $ecrLogin | docker login --username AWS --password-stdin "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
-                        } else {
-                        echo "Failed to retrieve ECR login password"
-                        exit 1
-                        }
+                        aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
+                        aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
+                        aws configure set region $AWS_REGION
+                        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                        '''
                     }
                 }
             }
@@ -60,7 +48,7 @@ pipeline {
             steps {
                 script {
                     echo "Checking if ECR repository exists..."
-                    def ecrExists = powershell(returnStatus: true, script: "aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}")
+                    def ecrExists = powershell(script: "aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}", returnStatus: true)
 
                     if (ecrExists != 0) {
                         echo "ECR repository does not exist. Creating..."
