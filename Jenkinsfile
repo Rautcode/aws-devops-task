@@ -14,7 +14,7 @@ pipeline {
             steps {
                 script {
                     echo "Cloning repository..."
-                    git 'https://github.com/Rautcode/aws-devops-task.git'
+                    git branch: 'main', credentialsId: 'your-credentials-id', url: 'https://github.com/Rautcode/aws-devops-task.git'
                 }
             }
         }
@@ -44,7 +44,7 @@ pipeline {
                 script {
                     echo "Checking if ECR repository exists..."
                     def ecrExists = sh(script: "aws ecr describe-repositories --repository-names $ECR_REPO --region $AWS_REGION", returnStatus: true)
-                    
+
                     if (ecrExists != 0) {
                         echo "ECR repository does not exist. Creating..."
                         sh "aws ecr create-repository --repository-name $ECR_REPO --region $AWS_REGION"
