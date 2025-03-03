@@ -2,10 +2,10 @@ pipeline {
     agent any
 
     environment {
-        AWS_ACCOUNT_ID = '982534379850'       // Your AWS Account ID
-        AWS_REGION = 'ap-south-1'             // Your AWS region (Mumbai)
-        ECR_REPO = 'my-python-app-lambda'     // Your ECR repository name
-        LAMBDA_FUNCTION = 'my-python-app'     // Your Lambda function name
+        AWS_ACCOUNT_ID = '982534379850'       
+        AWS_REGION = 'ap-south-1'             
+        ECR_REPO = 'my-python-app-lambda'     
+        LAMBDA_FUNCTION = 'my-python-app'     
         ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
     }
 
