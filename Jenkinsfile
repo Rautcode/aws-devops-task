@@ -23,7 +23,7 @@ pipeline {
             steps {
                 script {
                     echo "Building Docker image..."
-                    powershell "docker build -t ${ECR_REPO}:latest ."
+                    sh "docker build -t ${ECR_REPO}:latest ."
                 }
             }
         }
@@ -33,7 +33,7 @@ pipeline {
                 script {
                     echo "Logging into AWS ECR..."
                     withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-                        powershell '''
+                        sh '''
                         aws configure set aws_access_key_id $AWS_ACCESS_KEY_ID
                         aws configure set aws_secret_access_key $AWS_SECRET_ACCESS_KEY
                         aws configure set region $AWS_REGION
@@ -48,11 +48,11 @@ pipeline {
             steps {
                 script {
                     echo "Checking if ECR repository exists..."
-                    def ecrExists = powershell(script: "aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}", returnStatus: true)
+                    def ecrExists = sh(script: "aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}", returnStatus: true)
 
                     if (ecrExists != 0) {
                         echo "ECR repository does not exist. Creating..."
-                        powershell "aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}"
+                        sh "aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}"
                     } else {
                         echo "ECR repository already exists."
                     }
@@ -64,10 +64,10 @@ pipeline {
             steps {
                 script {
                     echo "Tagging Docker image..."
-                    powershell "docker tag ${ECR_REPO}:latest ${ECR_URI}:latest"
+                    sh "docker tag ${ECR_REPO}:latest ${ECR_URI}:latest"
 
                     echo "Pushing Docker image to ECR..."
-                    powershell "docker push ${ECR_URI}:latest"
+                    sh "docker push ${ECR_URI}:latest"
                 }
             }
         }
@@ -76,7 +76,7 @@ pipeline {
             steps {
                 script {
                     echo "Updating AWS Lambda function..."
-                    powershell "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest"
+                    sh "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest"
                 }
             }
         }
