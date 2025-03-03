@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         AWS_ACCOUNT_ID = '982534379850'       
-        AWS_REGION = 'ap-south-1'             
+        AWS_REGION = 'ap-south-1'              
         ECR_REPO = 'my-python-app-lambda'     
         LAMBDA_FUNCTION = 'my-python-app'     
         ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
@@ -36,10 +36,10 @@ pipeline {
             steps {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-                        def awsRegion = 'ap-south-1'
-                        def ecrUrl = "982534379850.dkr.ecr.${awsRegion}.amazonaws.com"
-                        sh '''
-                        aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 982534379850.dkr.ecr.ap-south-1.amazonaws.com
+                        echo "Logging into AWS ECR..."
+                        powershell '''
+                        $PASSWORD = aws ecr get-login-password --region ap-south-1
+                        $PASSWORD | docker login --username AWS --password-stdin 982534379850.dkr.ecr.ap-south-1.amazonaws.com
                         '''
                     }
                 }
