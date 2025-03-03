@@ -2,10 +2,10 @@ pipeline {
     agent any
 
     environment {
-        AWS_ACCOUNT_ID = '982534379850'       
-        AWS_REGION = 'ap-south-1'              
-        ECR_REPO = 'my-python-app-lambda'     
-        LAMBDA_FUNCTION = 'my-python-app'     
+        AWS_ACCOUNT_ID = '982534379850'
+        AWS_REGION = 'ap-south-1'
+        ECR_REPO = 'my-python-app-lambda'
+        LAMBDA_FUNCTION = 'my-python-app'
         ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
     }
 
@@ -16,7 +16,7 @@ pipeline {
                     echo "Cloning repository..."
                     checkout([
                         $class: 'GitSCM',
-                        branches: [[name: 'refs/heads/main']],  
+                        branches: [[name: 'refs/heads/main']],
                         userRemoteConfigs: [[url: 'https://github.com/Rautcode/aws-devops-task.git']]
                     ])
                 }
@@ -27,7 +27,7 @@ pipeline {
             steps {
                 script {
                     echo "Building Docker image..."
-                    powershell "docker build -t ${ECR_REPO}:latest ."
+                    sh "docker build -t ${ECR_REPO}:latest ."
                 }
             }
         }
@@ -37,9 +37,9 @@ pipeline {
                 script {
                     withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
                         echo "Logging into AWS ECR..."
-                        powershell """
-                        \$PASSWORD = aws ecr get-login-password --region ${AWS_REGION}
-                        \$PASSWORD | docker login --username AWS --password-stdin ${ECR_URI}
+                        sh """
+                        PASSWORD=\$(aws ecr get-login-password --region ${AWS_REGION})
+                        echo \$PASSWORD | docker login --username AWS --password-stdin ${ECR_URI}
                         """
                     }
                 }
@@ -50,18 +50,13 @@ pipeline {
             steps {
                 script {
                     echo "Checking if ECR repository exists..."
-                    def ecrExists = powershell(returnStatus: true, script: """
-                        try {
-                            aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION}
-                            exit 0
-                        } catch {
-                            exit 1
-                        }
+                    def ecrExists = sh(returnStatus: true, script: """
+                        aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION} || exit 1
                     """)
 
                     if (ecrExists != 0) {
                         echo "ECR repository does not exist. Creating..."
-                        powershell "aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}"
+                        sh "aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}"
                     } else {
                         echo "ECR repository already exists."
                     }
@@ -73,10 +68,10 @@ pipeline {
             steps {
                 script {
                     echo "Tagging Docker image..."
-                    powershell "docker tag ${ECR_REPO}:latest ${ECR_URI}:latest"
+                    sh "docker tag ${ECR_REPO}:latest ${ECR_URI}:latest"
 
                     echo "Pushing Docker image to ECR..."
-                    powershell "docker push ${ECR_URI}:latest"
+                    sh "docker push ${ECR_URI}:latest"
                 }
             }
         }
@@ -85,7 +80,7 @@ pipeline {
             steps {
                 script {
                     echo "Updating AWS Lambda function..."
-                    powershell "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest --region ${AWS_REGION}"
+                    sh "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest --region ${AWS_REGION}"
                 }
             }
         }
