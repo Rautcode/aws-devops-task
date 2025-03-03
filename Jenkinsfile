@@ -2,23 +2,38 @@ pipeline {
     agent any
 
     environment {
-        AWS_ACCOUNT_ID = '982534379850'
-        AWS_REGION = 'ap-south-1'
-        ECR_REPO = 'my-python-app-lambda'
+        AWS_ACCOUNT_ID = '939533572395'
+        AWS_DEFAULT_REGION = 'ap-south-1'
+        ECR_REPOSITORY = 'aws-data-pipeline-repo'
+        IMAGE_TAG = 'latest'
+        GIT_REPOSITORY = 'https://github.com/Its-Lord-Stark/aws-data-pipeline'
+        GIT_BRANCH = 'main'
+        DOCKER_IMAGE = "${ECR_REPOSITORY}:${IMAGE_TAG}"
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_DEFAULT_REGION}.amazonaws.com"
         LAMBDA_FUNCTION = 'my-python-app'
-        ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
     }
 
     stages {
-        stage('Clone Repo') {
+        stage('Checkout Code') {
             steps {
                 script {
-                    echo "Cloning repository..."
-                    checkout([
-                        $class: 'GitSCM',
-                        branches: [[name: 'refs/heads/main']],
-                        userRemoteConfigs: [[url: 'https://github.com/Rautcode/aws-devops-task.git']]
-                    ])
+                    checkout([$class: 'GitSCM', branches: [[name: "${GIT_BRANCH}"]],
+                        userRemoteConfigs: [[url: "${GIT_REPOSITORY}"]]])
+                }
+            }
+        }
+        
+        stage('Ensure ECR Repository Exists') {
+            steps {
+                withCredentials([string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'), 
+                                 string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    script {
+                        bat '''
+                        set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
+                        set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
+                        aws ecr describe-repositories --repository-names %ECR_REPOSITORY% || aws ecr create-repository --repository-name %ECR_REPOSITORY%
+                        '''
+                    }
                 }
             }
         }
@@ -26,63 +41,46 @@ pipeline {
         stage('Build Docker Image') {
             steps {
                 script {
-                    echo "Building Docker image..."
-                    sh "docker build -t ${ECR_REPO}:latest ."
+                    def dockerImage = docker.build("${DOCKER_IMAGE}")
                 }
             }
         }
 
-        stage('Login to AWS ECR') {
+        stage('Push Docker Image to ECR') {
             steps {
-                script {
-                    withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-credentials']]) {
-                        echo "Logging into AWS ECR..."
-                        sh """
-                        PASSWORD=\$(aws ecr get-login-password --region ${AWS_REGION})
-                        echo \$PASSWORD | docker login --username AWS --password-stdin ${ECR_URI}
-                        """
+                withCredentials([string(credentialsId: 'aws-access-key-id', variable: 'AWS_ACCESS_KEY_ID'), 
+                                 string(credentialsId: 'aws-secret-access-key', variable: 'AWS_SECRET_ACCESS_KEY')]) {
+                    script {
+                        bat '''
+                        FOR /F "tokens=*" %%i IN ('aws ecr get-login-password --region %AWS_DEFAULT_REGION%') DO docker login --username AWS --password %%i %ECR_REGISTRY%
+                        docker tag %DOCKER_IMAGE% %ECR_REGISTRY%/%ECR_REPOSITORY%:%IMAGE_TAG%
+                        docker push %ECR_REGISTRY%/%ECR_REPOSITORY%:%IMAGE_TAG%
+                        '''
                     }
                 }
             }
         }
 
-        stage('Ensure ECR Repository Exists') {
+        stage('Update Lambda Function') {
             steps {
                 script {
-                    echo "Checking if ECR repository exists..."
-                    def ecrExists = sh(returnStatus: true, script: """
-                        aws ecr describe-repositories --repository-names ${ECR_REPO} --region ${AWS_REGION} || exit 1
-                    """)
-
-                    if (ecrExists != 0) {
-                        echo "ECR repository does not exist. Creating..."
-                        sh "aws ecr create-repository --repository-name ${ECR_REPO} --region ${AWS_REGION}"
-                    } else {
-                        echo "ECR repository already exists."
-                    }
+                    // Updating the Lambda function with the new Docker image from ECR
+                    bat '''
+                    set AWS_ACCESS_KEY_ID=%AWS_ACCESS_KEY_ID%
+                    set AWS_SECRET_ACCESS_KEY=%AWS_SECRET_ACCESS_KEY%
+                    aws lambda update-function-code --function-name %LAMBDA_FUNCTION% --image-uri %ECR_REGISTRY%/%ECR_REPOSITORY%:%IMAGE_TAG% --region %AWS_DEFAULT_REGION%
+                    '''
                 }
             }
         }
+    }
 
-        stage('Tag and Push Docker Image') {
-            steps {
-                script {
-                    echo "Tagging Docker image..."
-                    sh "docker tag ${ECR_REPO}:latest ${ECR_URI}:latest"
-
-                    echo "Pushing Docker image to ECR..."
-                    sh "docker push ${ECR_URI}:latest"
-                }
-            }
+    post {
+        success {
+            echo 'Lambda function updated successfully with the new Docker image.'
         }
-
-        stage('Deploy to AWS Lambda') {
-            steps {
-                script {
-                    echo "Updating AWS Lambda function..."
-                    sh "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest --region ${AWS_REGION}"
-                }
-            }
+        failure {
+            echo 'Pipeline failed!'
         }
     }
 }
