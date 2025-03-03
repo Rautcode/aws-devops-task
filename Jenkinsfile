@@ -37,11 +37,20 @@ pipeline {
                 script {
                     echo "Logging into AWS ECR..."
                     withCredentials([aws(credentialsId: 'aws-credentials', accessKeyVariable: 'AWS_ACCESS_KEY_ID', secretKeyVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+                        env.AWS_REGION = 'ap-south-1'  
+                        env.AWS_ACCOUNT_ID = '982534379850' 
                         powershell '''
                         aws configure set aws_access_key_id $env:AWS_ACCESS_KEY_ID
                         aws configure set aws_secret_access_key $env:AWS_SECRET_ACCESS_KEY
-                        aws ecr get-login-password --region $env:AWS_REGION | docker login --username AWS --password-stdin $env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com
-                        '''
+                        aws configure set region $env:AWS_REGION
+                        $ecrLogin = aws ecr get-login-password --region $env:AWS_REGION
+                        if ($ecrLogin) {
+                        echo "AWS ECR Login Successful"
+                        $ecrLogin | docker login --username AWS --password-stdin "$env:AWS_ACCOUNT_ID.dkr.ecr.$env:AWS_REGION.amazonaws.com"
+                        } else {
+                        echo "Failed to retrieve ECR login password"
+                        exit 1
+                        }
                     }
                 }
             }
