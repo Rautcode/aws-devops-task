@@ -2,54 +2,77 @@ pipeline {
     agent any
 
     environment {
-        AWS_ACCOUNT_ID = '982534379850'
-        AWS_REGION = 'ap-south-1'
-        ECR_REPO = 'my-python-app-lambda'
-        LAMBDA_FUNCTION = 'my-python-app'
+        AWS_ACCOUNT_ID = '982534379850'       // Your AWS Account ID
+        AWS_REGION = 'ap-south-1'             // Your AWS region (Mumbai)
+        ECR_REPO = 'my-python-app-lambda'     // Your ECR repository name
+        LAMBDA_FUNCTION = 'my-python-app'     // Your Lambda function name
         ECR_URI = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
     }
 
     stages {
         stage('Clone Repo') {
             steps {
-                git 'https://github.com/Rautcode/aws-data-pipeline.git'
+                script {
+                    echo "Cloning repository..."
+                    git 'https://github.com/Rautcode/aws-devops-task.git'
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t ${ECR_REPO} ."
+                script {
+                    echo "Building Docker image..."
+                    sh "docker build -t ${ECR_REPO} ."
+                }
             }
         }
 
         stage('Login to AWS ECR') {
             steps {
-                sh "aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com"
+                script {
+                    echo "Logging into AWS ECR..."
+                    sh '''
+                    aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+                    '''
+                }
             }
         }
 
-        stage('Push Docker Image to ECR') {
+        stage('Ensure ECR Repository Exists') {
             steps {
-                sh '''
-                docker tag ${ECR_REPO}:latest ${ECR_URI}:latest
-                docker push ${ECR_URI}:latest
-                '''
+                script {
+                    echo "Checking if ECR repository exists..."
+                    def ecrExists = sh(script: "aws ecr describe-repositories --repository-names $ECR_REPO --region $AWS_REGION", returnStatus: true)
+                    
+                    if (ecrExists != 0) {
+                        echo "ECR repository does not exist. Creating..."
+                        sh "aws ecr create-repository --repository-name $ECR_REPO --region $AWS_REGION"
+                    } else {
+                        echo "ECR repository already exists."
+                    }
+                }
             }
         }
 
-        stage('Deploy Terraform') {
+        stage('Tag and Push Docker Image') {
             steps {
-                sh '''
-                cd terraform
-                terraform init
-                terraform apply -auto-approve
-                '''
+                script {
+                    echo "Tagging Docker image..."
+                    sh "docker tag ${ECR_REPO}:latest ${ECR_URI}:latest"
+
+                    echo "Pushing Docker image to ECR..."
+                    sh "docker push ${ECR_URI}:latest"
+                }
             }
         }
 
-        stage('Update AWS Lambda') {
+        stage('Deploy to AWS Lambda') {
             steps {
-                sh "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest"
+                script {
+                    echo "Updating AWS Lambda function..."
+                    sh "aws lambda update-function-code --function-name ${LAMBDA_FUNCTION} --image-uri ${ECR_URI}:latest"
+                }
             }
         }
     }
